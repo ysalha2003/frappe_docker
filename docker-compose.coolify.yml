@@ -3,17 +3,15 @@ version: '3.8'
 services:
   backend:
     image: frappe/erpnext:v15.28.1
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     environment:
       - SHELL=/bin/bash
-      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-erpnext.local}
+      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-smshub.click}
       - DB_HOST=db
       - DB_PORT=3306
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
-      - REDIS_SOCKETIO=redis-socketio:6379
+      - REDIS_CACHE=redis://redis-cache:6379
+      - REDIS_QUEUE=redis://redis-queue:6379
+      - REDIS_SOCKETIO=redis://redis-socketio:6379
       - SOCKETIO_PORT=9000
       - AUTO_MIGRATE=1
     volumes:
@@ -21,16 +19,15 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   frontend:
     image: frappe/erpnext:v15.28.1
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - nginx-entrypoint.sh
+    restart: unless-stopped
+    command: ["nginx-entrypoint.sh"]
     environment:
-      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-erpnext.local}
+      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-smshub.click}
       - UPSTREAM_REAL_IP_ADDRESS=127.0.0.1
       - UPSTREAM_REAL_IP_HEADER=X-Forwarded-For
       - UPSTREAM_REAL_IP_RECURSIVE=off
@@ -41,17 +38,22 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
-    # Coolify will handle port mapping - DO NOT expose ports here
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.erpnext.rule=Host(`smshub.click`)"
+      - "traefik.http.routers.erpnext.entrypoints=http"
+      - "traefik.http.services.erpnext.loadbalancer.server.port=8080"
+      - "traefik.http.routers.erpnext-ssl.rule=Host(`smshub.click`)"
+      - "traefik.http.routers.erpnext-ssl.entrypoints=https"
+      - "traefik.http.routers.erpnext-ssl.tls.certresolver=letsencrypt"
 
   db:
     image: mariadb:10.6
+    restart: unless-stopped
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
+      test: mysqladmin ping -h localhost --password=${DB_PASSWORD:-admin}
       interval: 1s
       retries: 15
-    deploy:
-      restart_policy:
-        condition: on-failure
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -63,80 +65,76 @@ services:
       - db-data:/var/lib/mysql
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   redis-cache:
     image: redis:6.2-alpine
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     volumes:
       - redis-cache-data:/data
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   redis-queue:
     image: redis:6.2-alpine
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     volumes:
       - redis-queue-data:/data
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   redis-socketio:
     image: redis:6.2-alpine
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     volumes:
       - redis-socketio-data:/data
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   scheduler:
     image: frappe/erpnext:v15.28.1
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - schedule
+    restart: unless-stopped
+    command: ["bench", "schedule"]
     environment:
-      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-erpnext.local}
+      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-smshub.click}
       - DB_HOST=db
       - DB_PORT=3306
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
-      - REDIS_SOCKETIO=redis-socketio:6379
+      - REDIS_CACHE=redis://redis-cache:6379
+      - REDIS_QUEUE=redis://redis-queue:6379
+      - REDIS_SOCKETIO=redis://redis-socketio:6379
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
   worker:
     image: frappe/erpnext:v15.28.1
-    deploy:
-      restart_policy:
-        condition: on-failure
-    command:
-      - bench
-      - worker
-      - --queue
-      - default
+    restart: unless-stopped
+    command: ["bench", "worker", "--queue", "default"]
     environment:
-      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-erpnext.local}
+      - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-smshub.click}
       - DB_HOST=db
       - DB_PORT=3306
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
-      - REDIS_SOCKETIO=redis-socketio:6379
+      - REDIS_CACHE=redis://redis-cache:6379
+      - REDIS_QUEUE=redis://redis-queue:6379
+      - REDIS_SOCKETIO=redis://redis-socketio:6379
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
+    labels:
+      - "traefik.enable=false"
 
 volumes:
   sites:
