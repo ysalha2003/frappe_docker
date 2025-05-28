@@ -19,8 +19,6 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
 
   frontend:
     image: frappe/erpnext:v15.28.1
@@ -28,6 +26,8 @@ services:
     command: ["nginx-entrypoint.sh"]
     environment:
       - FRAPPE_SITE_NAME_HEADER=${SITE_NAME:-smshub.click}
+      - BACKEND=backend:8000
+      - SOCKETIO=backend:9000
       - UPSTREAM_REAL_IP_ADDRESS=127.0.0.1
       - UPSTREAM_REAL_IP_HEADER=X-Forwarded-For
       - UPSTREAM_REAL_IP_RECURSIVE=off
@@ -38,65 +38,54 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.erpnext.rule=Host(`smshub.click`)"
-      - "traefik.http.routers.erpnext.entrypoints=http"
-      - "traefik.http.services.erpnext.loadbalancer.server.port=8080"
-      - "traefik.http.routers.erpnext-ssl.rule=Host(`smshub.click`)"
-      - "traefik.http.routers.erpnext-ssl.entrypoints=https"
-      - "traefik.http.routers.erpnext-ssl.tls.certresolver=letsencrypt"
 
   db:
     image: mariadb:10.6
     restart: unless-stopped
     healthcheck:
-      test: mysqladmin ping -h localhost --password=${DB_PASSWORD:-admin}
-      interval: 1s
-      retries: 15
+      test: mysqladmin ping -h localhost --password=${DB_PASSWORD:-SecureERPNext2024!}
+      interval: 2s
+      retries: 20
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
       - --skip-innodb-read-only-compressed
+      - --bind-address=0.0.0.0
     environment:
-      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-admin}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-SecureERPNext2024!}
+      - MYSQL_DATABASE=smshub_click
     volumes:
       - db-data:/var/lib/mysql
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
 
   redis-cache:
     image: redis:6.2-alpine
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     volumes:
       - redis-cache-data:/data
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
 
   redis-queue:
     image: redis:6.2-alpine
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     volumes:
       - redis-queue-data:/data
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
 
   redis-socketio:
     image: redis:6.2-alpine
     restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
     volumes:
       - redis-socketio-data:/data
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
 
   scheduler:
     image: frappe/erpnext:v15.28.1
@@ -114,8 +103,9 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
+    depends_on:
+      db:
+        condition: service_healthy
 
   worker:
     image: frappe/erpnext:v15.28.1
@@ -133,8 +123,9 @@ services:
       - logs:/home/frappe/frappe-bench/logs
     networks:
       - erpnext
-    labels:
-      - "traefik.enable=false"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   sites:
